@@ -1,37 +1,49 @@
 {
   "manifest_version": 3,
   "name": "Chess.com Live Monitor",
-  "version": "2.0.1",
-  "description": "Real-time chess game data extractor for Chess.com",
-  "permissions": ["scripting", "storage", "sidePanel"],
-  "host_permissions": ["http://127.0.0.1/*"],
-  "action": {
-    "default_popup": "popup/popup.html"
-  },
-  "side_panel": {
-    "default_path": "popup/popup.html"
-  },
+  "version": "2.0.2",
+  "description": "Real-time FEN and move extraction from Chess.com games",
+  
+  "permissions": [
+    "scripting",
+    "storage",
+    "sidePanel"
+  ],
+  
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "https://www.chess.com/*"
+  ],
+  
   "background": {
     "service_worker": "background.js"
   },
+  
   "content_scripts": [
     {
-      "matches": [
-        "https://www.chess.com/game/*",
-        "https://www.chess.com/play/*"
-      ],
+      "matches": ["https://www.chess.com/*"],
       "js": [
-        "content/fen_aggregator.js",
+        "content/fen_ws.js",
         "content/fen_dom.js",
-        "content/fen_ws.js"
+        "content/fen_aggregator.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     }
   ],
+  
   "web_accessible_resources": [
     {
       "resources": ["inject/ws_hook.js"],
       "matches": ["https://www.chess.com/*"]
     }
-  ]
+  ],
+  
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Chess.com Live Monitor"
+  },
+  
+  "side_panel": {
+    "default_path": "popup/popup.html"
+  }
 }
