@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Chess FEN Aggregator (Live)",
+  "version": "1.0.0",
+
+  "permissions": ["scripting"],
+  "host_permissions": ["http://127.0.0.1/*"],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://www.chess.com/game/*"],
+      "js": [
+        "content/fen_aggregator.js",
+        "content/fen_dom.js",
+        "content/fen_ws.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": ["inject/ws_hook.js"],
+      "matches": ["https://www.chess.com/*"]
+    }
+  ]
+}
