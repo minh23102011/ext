@@ -1,18 +1,25 @@
 {
   "manifest_version": 3,
-  "name": "Chess FEN Aggregator (Live)",
-  "version": "1.0.0",
-
-  "permissions": ["scripting"],
+  "name": "Chess.com Live Monitor",
+  "version": "2.0.1",
+  "description": "Real-time chess game data extractor for Chess.com",
+  "permissions": ["scripting", "storage", "sidePanel"],
   "host_permissions": ["http://127.0.0.1/*"],
-
+  "action": {
+    "default_popup": "popup/popup.html"
+  },
+  "side_panel": {
+    "default_path": "popup/popup.html"
+  },
   "background": {
     "service_worker": "background.js"
   },
-
   "content_scripts": [
     {
-      "matches": ["https://www.chess.com/game/*"],
+      "matches": [
+        "https://www.chess.com/game/*",
+        "https://www.chess.com/play/*"
+      ],
       "js": [
         "content/fen_aggregator.js",
         "content/fen_dom.js",
@@ -21,7 +28,6 @@
       "run_at": "document_idle"
     }
   ],
-
   "web_accessible_resources": [
     {
       "resources": ["inject/ws_hook.js"],

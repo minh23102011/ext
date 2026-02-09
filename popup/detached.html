@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chess.com Live Monitor - Logs</title>
+  <link rel="stylesheet" href="popup.css">
+  <style>
+    /* Standalone window specific styles */
+    body {
+      width: 100%;
+      height: 100vh;
+      min-width: 500px;
+    }
+    
+    .container {
+      height: 100vh;
+    }
+    
+    .header {
+      cursor: move;
+      user-select: none;
+    }
+    
+    .pin-button {
+      background: #3a3a3a;
+      border: 1px solid #4a4a4a;
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 16px;
+      color: #aaa;
+    }
+    
+    .pin-button:hover {
+      background: #4a4a4a;
+      color: #fff;
+    }
+    
+    .pin-button.pinned {
+      background: #4caf50;
+      color: white;
+    }
+    
+    .always-on-top-notice {
+      position: absolute;
+      top: 50px;
+      right: 16px;
+      background: #4caf50;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      animation: slideInRight 0.3s ease-out;
+      z-index: 1001;
+    }
+    
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header" id="dragHandle">
+      <div class="title">
+        <span class="icon">♟️</span>
+        <span>Chess.com Live Monitor</span>
+      </div>
+      <div class="header-controls">
+        <button id="pinBtn" class="pin-button" title="Always on top">
+          <span>📌</span>
+        </button>
+        <button id="refreshBtn" class="icon-btn" title="Refresh">
+          <span>🔄</span>
+        </button>
+        <button id="settingsBtn" class="icon-btn" title="Settings">
+          <span>⚙️</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+      <div class="stat">
+        <span class="stat-label">Mode:</span>
+        <span id="currentMode" class="stat-value">-</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Moves:</span>
+        <span id="moveCount" class="stat-value">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Backend:</span>
+        <span id="backendStatus" class="stat-value status-unknown">●</span>
+      </div>
+    </div>
+
+    <!-- Logs Container -->
+    <div id="logsContainer" class="logs-container">
+      <div class="empty-state">
+        <div class="empty-icon">♟️</div>
+        <div class="empty-text">Waiting for game data...</div>
+        <div class="empty-hint">Play or watch a game on Chess.com</div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+      <label class="checkbox-container">
+        <input type="checkbox" id="autoScrollCheckbox" checked>
+        <span>Auto-scroll ↓</span>
+      </label>
+      <button id="clearBtn" class="btn btn-secondary">Clear Logs</button>
+      <button id="exportBtn" class="btn btn-primary">Export JSON</button>
+    </div>
+
+    <!-- Settings Panel -->
+    <div id="settingsPanel" class="settings-panel hidden">
+      <div class="settings-header">
+        <h3>Settings</h3>
+        <button id="closeSettingsBtn" class="close-btn">✕</button>
+      </div>
+      <div class="settings-body">
+        <div class="setting-group">
+          <label for="backendUrl">Backend URL:</label>
+          <input 
+            type="text" 
+            id="backendUrl" 
+            value="http://127.0.0.1:8765/fen"
+            placeholder="http://127.0.0.1:8765/fen"
+          >
+        </div>
+        <div class="setting-group">
+          <label for="maxLogs">Max Logs (0 = unlimited):</label>
+          <input 
+            type="number" 
+            id="maxLogs" 
+            value="50"
+            min="0"
+            max="500"
+          >
+        </div>
+        <div class="setting-group">
+          <label class="checkbox-container">
+            <input type="checkbox" id="showDebugInfo">
+            <span>Show debug info</span>
+          </label>
+        </div>
+      </div>
+      <div class="settings-footer">
+        <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+  <script src="detached-window.js"></script>
+</body>
+</html>
