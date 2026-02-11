@@ -1,498 +1,346 @@
-// popup.js - Main popup interface logic
-(function() {
-  'use strict';
+console.log("[POPUP] Chess Monitor Popup initialized");
+
+// State
+let logs = [];
+let settings = {
+  backendUrl: "http://127.0.0.1:8765/fen",
+  maxLogs: 50,
+  showDebugInfo: false
+};
+
+// DOM Elements
+const logsContainer = document.getElementById('logsContainer');
+const currentMode = document.getElementById('currentMode');
+const moveCount = document.getElementById('moveCount');
+const backendStatus = document.getElementById('backendStatus');
+const autoScrollCheckbox = document.getElementById('autoScrollCheckbox');
+const clearBtn = document.getElementById('clearBtn');
+const exportBtn = document.getElementById('exportBtn');
+const refreshBtn = document.getElementById('refreshBtn');
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsPanel = document.getElementById('settingsPanel');
+const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+const backendUrlInput = document.getElementById('backendUrl');
+const maxLogsInput = document.getElementById('maxLogs');
+const showDebugInfoCheckbox = document.getElementById('showDebugInfo');
+
+// Load settings
+function loadSettings() {
+  chrome.storage.local.get(['settings'], (result) => {
+    if (result.settings) {
+      settings = { ...settings, ...result.settings };
+      updateSettingsUI();
+    }
+  });
+}
+
+function updateSettingsUI() {
+  backendUrlInput.value = settings.backendUrl;
+  maxLogsInput.value = settings.maxLogs;
+  showDebugInfoCheckbox.checked = settings.showDebugInfo;
+}
+
+function saveSettings() {
+  settings.backendUrl = backendUrlInput.value;
+  settings.maxLogs = parseInt(maxLogsInput.value) || 50;
+  settings.showDebugInfo = showDebugInfoCheckbox.checked;
   
-  console.log('[POPUP] Initializing...');
-  
-  // DOM elements
-  let logContainer, statsMode, statsMoves, statsBackend;
-  let autoScrollCheckbox, clearBtn, exportBtn, detachBtn, settingsBtn;
-  let settingsPanel, backendUrlInput, maxLogsInput, debugCheckbox, saveSettingsBtn;
-  
-  // State
-  let logs = [];
-  let autoScroll = true;
-  let settings = {
-    backend_url: 'http://127.0.0.1:8765/fen',
-    max_logs: 100,
-    show_debug: false
-  };
-  
-  /**
-   * Initialize DOM references
-   */
-  function initDom() {
-    // Logs
-    logContainer = document.getElementById('log-container');
+  chrome.storage.local.set({ settings }, () => {
+    console.log("[POPUP] Settings saved:", settings);
+    settingsPanel.classList.add('hidden');
     
-    // Stats
-    statsMode = document.getElementById('stats-mode');
-    statsMoves = document.getElementById('stats-moves');
-    statsBackend = document.getElementById('stats-backend');
-    
-    // Controls
-    autoScrollCheckbox = document.getElementById('auto-scroll');
-    clearBtn = document.getElementById('clear-logs');
-    exportBtn = document.getElementById('export-logs');
-    detachBtn = document.getElementById('detach-window');
-    settingsBtn = document.getElementById('settings-btn');
-    
-    // Settings
-    settingsPanel = document.getElementById('settings-panel');
-    backendUrlInput = document.getElementById('backend-url');
-    maxLogsInput = document.getElementById('max-logs');
-    debugCheckbox = document.getElementById('debug-mode');
-    saveSettingsBtn = document.getElementById('save-settings');
-    
-    console.log('[POPUP] DOM initialized');
-  }
-  
-  /**
-   * Setup event listeners
-   */
-  function setupListeners() {
-    // Auto-scroll toggle
-    if (autoScrollCheckbox) {
-      autoScrollCheckbox.checked = autoScroll;
-      autoScrollCheckbox.addEventListener('change', (e) => {
-        autoScroll = e.target.checked;
-        if (autoScroll) scrollToBottom();
-      });
-    }
-    
-    // Clear logs
-    if (clearBtn) {
-      clearBtn.addEventListener('click', clearLogs);
-    }
-    
-    // Export logs
-    if (exportBtn) {
-      exportBtn.addEventListener('click', exportLogs);
-    }
-    
-    // Detach window
-    if (detachBtn) {
-      detachBtn.addEventListener('click', openDetachedWindow);
-    }
-    
-    // Settings toggle
-    if (settingsBtn) {
-      settingsBtn.addEventListener('click', toggleSettings);
-    }
-    
-    // Save settings
-    if (saveSettingsBtn) {
-      saveSettingsBtn.addEventListener('click', saveSettings);
-    }
-    
-    // Listen for new logs from background
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      if (message.action === 'NEW_LOG') {
-        console.log('[POPUP] New log received:', message.payload);
-        addLog(message.payload);
-        sendResponse({ success: true });
-      }
-      return true;
+    // Notify background script
+    chrome.runtime.sendMessage({
+      type: "UPDATE_SETTINGS",
+      settings
     });
-    
-    console.log('[POPUP] Listeners setup');
-  }
-  
-  /**
-   * Load settings from storage
-   */
-  async function loadSettings() {
-    try {
-      const result = await chrome.storage.local.get(['backend_url', 'max_logs', 'show_debug']);
-      
-      settings.backend_url = result.backend_url || settings.backend_url;
-      settings.max_logs = result.max_logs || settings.max_logs;
-      settings.show_debug = result.show_debug || settings.show_debug;
-      
-      // Update UI
-      if (backendUrlInput) backendUrlInput.value = settings.backend_url;
-      if (maxLogsInput) maxLogsInput.value = settings.max_logs;
-      if (debugCheckbox) debugCheckbox.checked = settings.show_debug;
-      
-      console.log('[POPUP] Settings loaded:', settings);
-    } catch (error) {
-      console.error('[POPUP] Error loading settings:', error);
-    }
-  }
-  
-  /**
-   * Load logs from storage
-   */
-  async function loadLogs() {
-    try {
-      const result = await chrome.storage.local.get(['chess_fen_logs']);
-      logs = result.chess_fen_logs || [];
-      
-      console.log('[POPUP] Loaded', logs.length, 'logs from storage');
-      
-      // Render all logs
-      renderAllLogs();
-      
-      // Update stats
+  });
+}
+
+// Load saved logs
+function loadLogs() {
+  chrome.storage.local.get(['logs'], (result) => {
+    if (result.logs) {
+      logs = result.logs;
+      renderLogs();
       updateStats();
-      
-    } catch (error) {
-      console.error('[POPUP] Error loading logs:', error);
-      showMessage('Error loading logs: ' + error.message, 'error');
     }
+  });
+}
+
+function saveLogs() {
+  // Keep only maxLogs entries
+  if (settings.maxLogs > 0 && logs.length > settings.maxLogs) {
+    logs = logs.slice(-settings.maxLogs);
   }
   
-  /**
-   * Render all logs
-   */
-  function renderAllLogs() {
-    if (!logContainer) return;
-    
-    logContainer.innerHTML = '';
-    
-    if (logs.length === 0) {
-      showMessage('Waiting for game data...', 'info');
-      return;
-    }
-    
-    logs.forEach(log => {
-      const logElement = createLogElement(log);
-      logContainer.appendChild(logElement);
-    });
-    
-    if (autoScroll) {
-      scrollToBottom();
-    }
-  }
+  chrome.storage.local.set({ logs });
+}
+
+// Format time
+function formatTime(seconds) {
+  if (seconds === null || seconds === undefined) return '--:--';
   
-  /**
-   * Add a new log entry
-   */
-  function addLog(logData) {
-    logs.push(logData);
-    
-    // Trim to max logs
-    if (logs.length > settings.max_logs) {
-      logs = logs.slice(-settings.max_logs);
-      renderAllLogs(); // Re-render if trimmed
-    } else {
-      // Just append new log
-      const logElement = createLogElement(logData);
-      logContainer.appendChild(logElement);
-      
-      if (autoScroll) {
-        scrollToBottom();
-      }
-    }
-    
-    updateStats();
-  }
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
   
-  /**
-   * Create log element
-   */
-  function createLogElement(log) {
-    const div = document.createElement('div');
-    div.className = 'log-entry';
-    
-    // Header
-    const header = document.createElement('div');
-    header.className = 'log-header';
-    
-    const moveInfo = `Move #${log.move_count} | ${log.move || 'N/A'}`;
-    const turnInfo = `Now: ${log.turn_to_move === 'WHITE' ? '⚪ WHITE' : '⚫ BLACK'}`;
-    
-    header.innerHTML = `
-      <span class="log-move">${moveInfo}</span>
-      <span class="log-turn">${turnInfo}</span>
-    `;
-    
-    // Body
-    const body = document.createElement('div');
-    body.className = 'log-body';
-    
-    let bodyHtml = `
-      <div class="log-row">
-        <span class="log-label">FEN Before:</span>
-        <span class="log-value">${truncate(log.fen_before, 60)}</span>
+  if (hours > 0) {
+    return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Render single log entry
+function createLogEntry(log, index) {
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  
+  const moveNum = log.move_count || index + 1;
+  const moveNotation = log.move || '?';
+  const turnColor = log.turn_to_move === 'WHITE' ? '⚪' : '⚫';
+  const turnText = log.turn_to_move || 'UNKNOWN';
+  const statusIcon = log.backend_status === 'success' ? '✓' : '✗';
+  const statusClass = log.backend_status === 'success' ? 'status-success' : 'status-failed';
+  
+  entry.innerHTML = `
+    <div class="log-header">
+      <div class="log-move">
+        <span class="move-number">Move #${moveNum}</span>
+        <span class="move-notation">${moveNotation}</span>
       </div>
-      <div class="log-row">
-        <span class="log-label">FEN After:</span>
-        <span class="log-value">${truncate(log.fen_after, 60)}</span>
+      <div class="turn-indicator">
+        <span>Now:</span>
+        <span class="turn-color">${turnColor}</span>
+        <span>${turnText}'s turn</span>
       </div>
-      <div class="log-row">
-        <span class="log-label">Move List:</span>
-        <span class="log-value">${log.move_list ? log.move_list.join(', ') : 'N/A'}</span>
+    </div>
+    <div class="log-body">
+      <div class="log-field">
+        <span class="field-label">FEN Before:</span>
+        <span class="field-value fen-value">${truncateFen(log.fen_before || 'N/A')}</span>
       </div>
-      <div class="log-row">
-        <span class="log-label">Time:</span>
-        <span class="log-value">⚪ ${formatTime(log.white_time)} | ⚫ ${formatTime(log.black_time)} | ${log.source} | ${getBackendIcon(log.backend_status)}</span>
+      <div class="log-field">
+        <span class="field-label">FEN After:</span>
+        <span class="field-value fen-value">${truncateFen(log.fen_after || 'N/A')}</span>
       </div>
-    `;
-    
-    // Debug info (if enabled)
-    if (settings.show_debug) {
-      bodyHtml += `
-        <div class="log-row log-debug">
-          <span class="log-label">Mode:</span>
-          <span class="log-value">${log.mode} ${log.your_color ? '(You: ' + log.your_color + ')' : ''}</span>
+      ${log.move_list && log.move_list.length > 0 ? `
+        <div class="separator"></div>
+        <div class="log-field">
+          <span class="field-label">Move List:</span>
+          <span class="field-value">${log.move_list.join(', ')}</span>
         </div>
-        <div class="log-row log-debug">
-          <span class="log-label">Timestamp:</span>
-          <span class="log-value">${new Date(log.ts).toLocaleTimeString()}</span>
+      ` : ''}
+      ${log.white_time !== null || log.black_time !== null ? `
+        <div class="separator"></div>
+        <div class="log-field">
+          <span class="field-label">Time:</span>
+          <div class="field-value time-value">
+            <span class="time-player">⚪ ${formatTime(log.white_time)}</span>
+            <span class="time-player">⚫ ${formatTime(log.black_time)}</span>
+          </div>
+        </div>
+      ` : ''}
+      ${log.your_color ? `
+        <div class="log-field">
+          <span class="field-label">Your Color:</span>
+          <span class="field-value">${log.your_color === 'WHITE' ? '⚪ WHITE' : '⚫ BLACK'}</span>
+        </div>
+      ` : ''}
+      ${log.mode ? `
+        <div class="log-field">
+          <span class="field-label">Mode:</span>
+          <span class="field-value">${log.mode === 'playing' ? '♟️ Playing' : '👁️ Spectating'}</span>
+        </div>
+      ` : ''}
+      <div class="separator"></div>
+      <div class="log-field">
+        <span class="field-label">Status:</span>
+        <div class="field-value log-status">
+          <span class="source-badge">${log.source || 'UNKNOWN'}</span>
+          <span class="status-icon ${statusClass}">${statusIcon}</span>
+        </div>
+      </div>
+      ${settings.showDebugInfo && log.ts ? `
+        <div class="log-field">
+          <span class="field-label">Timestamp:</span>
+          <span class="field-value">${new Date(log.ts).toLocaleTimeString()}</span>
+        </div>
+      ` : ''}
+    </div>
+  `;
+  
+  return entry;
+}
+
+function truncateFen(fen) {
+  if (!fen || fen === 'N/A') return fen;
+  // Show first part of FEN (board position)
+  const parts = fen.split(' ');
+  return parts[0] + ' ' + (parts[1] || '');
+}
+
+// Render all logs
+function renderLogs() {
+  // Remove empty state
+  const emptyState = logsContainer.querySelector('.empty-state');
+  if (logs.length > 0 && emptyState) {
+    emptyState.remove();
+  }
+  
+  // Clear existing logs
+  const existingLogs = logsContainer.querySelectorAll('.log-entry');
+  existingLogs.forEach(log => log.remove());
+  
+  // Show empty state if no logs
+  if (logs.length === 0) {
+    if (!emptyState) {
+      logsContainer.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">♟️</div>
+          <div class="empty-text">No logs yet</div>
+          <div class="empty-hint">Play or watch a game on Chess.com</div>
         </div>
       `;
     }
-    
-    body.innerHTML = bodyHtml;
-    
-    div.appendChild(header);
-    div.appendChild(body);
-    
-    return div;
+    return;
   }
   
-  /**
-   * Update stats bar
-   */
-  function updateStats() {
-    if (!logs || logs.length === 0) {
-      if (statsMode) statsMode.textContent = '-';
-      if (statsMoves) statsMoves.textContent = '0';
-      if (statsBackend) statsBackend.className = 'status-dot';
-      return;
-    }
+  // Render logs
+  logs.forEach((log, index) => {
+    const entry = createLogEntry(log, index);
+    logsContainer.appendChild(entry);
+  });
+  
+  // Auto-scroll to bottom
+  if (autoScrollCheckbox.checked) {
+    logsContainer.scrollTop = logsContainer.scrollHeight;
+  }
+}
+
+// Update stats
+function updateStats() {
+  moveCount.textContent = logs.length;
+  
+  if (logs.length > 0) {
+    const lastLog = logs[logs.length - 1];
+    currentMode.textContent = lastLog.mode === 'playing' ? '♟️ Playing' : 
+                              lastLog.mode === 'spectating' ? '👁️ Spectating' : '-';
     
-    const latest = logs[logs.length - 1];
-    
-    if (statsMode) {
-      statsMode.textContent = latest.mode || 'spectating';
-    }
-    
-    if (statsMoves) {
-      statsMoves.textContent = latest.move_count || 0;
-    }
-    
-    if (statsBackend) {
-      statsBackend.className = 'status-dot ' + 
-        (latest.backend_status === 'success' ? 'status-success' : 
-         latest.backend_status === 'error' ? 'status-error' : 
-         'status-unknown');
-    }
+    const statusClass = lastLog.backend_status === 'success' ? 'status-success' : 'status-failed';
+    backendStatus.className = `stat-value ${statusClass}`;
+    backendStatus.textContent = lastLog.backend_status === 'success' ? '● Online' : '● Offline';
+  }
+}
+
+// Add new log
+function addLog(logData) {
+  logs.push(logData);
+  saveLogs();
+  renderLogs();
+  updateStats();
+}
+
+// Clear logs
+function clearLogs() {
+  if (confirm('Clear all logs?')) {
+    logs = [];
+    chrome.storage.local.set({ logs: [] });
+    renderLogs();
+    updateStats();
+  }
+}
+
+// Export logs
+function exportLogs() {
+  if (logs.length === 0) {
+    alert('No logs to export');
+    return;
   }
   
-  /**
-   * Clear all logs
-   */
-  async function clearLogs() {
-    if (!confirm('Clear all logs?')) return;
-    
-    try {
-      // Clear in background
-      const response = await chrome.runtime.sendMessage({ action: 'CLEAR_LOGS' });
+  const dataStr = JSON.stringify(logs, null, 2);
+  const blob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+  const filename = `chess-logs-${timestamp}.json`;
+  
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  
+  URL.revokeObjectURL(url);
+  console.log("[POPUP] Exported", logs.length, "logs");
+}
+
+// Event Listeners
+const detachBtn = document.getElementById('detachBtn');
+
+// Open detached window
+if (detachBtn) {
+  detachBtn.addEventListener('click', () => {
+    chrome.windows.create({
+      url: chrome.runtime.getURL('popup/detached.html'),
+      type: 'popup',
+      width: 500,
+      height: 700,
+      focused: true
+    });
+  });
+}
+
+clearBtn.addEventListener('click', clearLogs);
+exportBtn.addEventListener('click', exportLogs);
+refreshBtn.addEventListener('click', () => {
+  loadLogs();
+  loadSettings();
+});
+
+settingsBtn.addEventListener('click', () => {
+  settingsPanel.classList.remove('hidden');
+});
+
+closeSettingsBtn.addEventListener('click', () => {
+  settingsPanel.classList.add('hidden');
+});
+
+saveSettingsBtn.addEventListener('click', saveSettings);
+
+// Listen for new logs from background
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === 'FEN_LOG') {
+    console.log("[POPUP] Received log:", msg.payload);
+    addLog(msg.payload);
+  }
+});
+
+// Initialize
+loadSettings();
+loadLogs();
+
+// Poll storage for new logs every 500ms
+let lastLogCount = 0;
+setInterval(() => {
+  chrome.storage.local.get(['logs'], (result) => {
+    if (result.logs && result.logs.length > lastLogCount) {
+      console.log("[POPUP] 💾 New logs in storage:", result.logs.length - lastLogCount);
       
-      if (response.success) {
-        logs = [];
-        renderAllLogs();
-        updateStats();
-        showMessage('Logs cleared', 'success');
-      } else {
-        showMessage('Failed to clear logs', 'error');
-      }
-    } catch (error) {
-      console.error('[POPUP] Error clearing logs:', error);
-      showMessage('Error: ' + error.message, 'error');
-    }
-  }
-  
-  /**
-   * Export logs as JSON
-   */
-  function exportLogs() {
-    if (logs.length === 0) {
-      showMessage('No logs to export', 'warning');
-      return;
-    }
-    
-    const json = JSON.stringify(logs, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `chess_logs_${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    showMessage('Logs exported', 'success');
-  }
-  
-  /**
-   * Open detached window
-   */
-  async function openDetachedWindow() {
-    try {
-      const response = await chrome.runtime.sendMessage({ 
-        action: 'OPEN_DETACHED_WINDOW' 
+      // Add only new logs
+      const newLogs = result.logs.slice(lastLogCount);
+      newLogs.forEach(log => {
+        // Check if log already exists (by timestamp)
+        const exists = logs.find(l => l.ts === log.ts);
+        if (!exists) {
+          addLog(log);
+        }
       });
       
-      if (response.success) {
-        console.log('[POPUP] Detached window opened');
-      } else {
-        showMessage('Failed to open detached window', 'error');
-      }
-    } catch (error) {
-      console.error('[POPUP] Error opening detached window:', error);
-      showMessage('Error: ' + error.message, 'error');
+      lastLogCount = result.logs.length;
     }
-  }
-  
-  /**
-   * Toggle settings panel
-   */
-  function toggleSettings() {
-    if (!settingsPanel) return;
-    
-    if (settingsPanel.style.display === 'none' || !settingsPanel.style.display) {
-      settingsPanel.style.display = 'block';
-    } else {
-      settingsPanel.style.display = 'none';
-    }
-  }
-  
-  /**
-   * Save settings
-   */
-  async function saveSettings() {
-    try {
-      const newSettings = {
-        backend_url: backendUrlInput.value.trim(),
-        max_logs: parseInt(maxLogsInput.value, 10),
-        show_debug: debugCheckbox.checked
-      };
-      
-      // Validate
-      if (!newSettings.backend_url) {
-        showMessage('Backend URL cannot be empty', 'error');
-        return;
-      }
-      
-      if (newSettings.max_logs < 10 || newSettings.max_logs > 1000) {
-        showMessage('Max logs must be between 10 and 1000', 'error');
-        return;
-      }
-      
-      // Save to storage
-      await chrome.storage.local.set(newSettings);
-      
-      // Update local settings
-      settings = newSettings;
-      
-      // Re-render if debug mode changed
-      renderAllLogs();
-      
-      showMessage('Settings saved', 'success');
-      
-      // Hide panel
-      settingsPanel.style.display = 'none';
-      
-    } catch (error) {
-      console.error('[POPUP] Error saving settings:', error);
-      showMessage('Error: ' + error.message, 'error');
-    }
-  }
-  
-  /**
-   * Show temporary message
-   */
-  function showMessage(text, type = 'info') {
-    if (!logContainer) return;
-    
-    const msg = document.createElement('div');
-    msg.className = `log-message log-message-${type}`;
-    msg.textContent = text;
-    
-    logContainer.innerHTML = '';
-    logContainer.appendChild(msg);
-  }
-  
-  /**
-   * Scroll to bottom
-   */
-  function scrollToBottom() {
-    if (logContainer) {
-      logContainer.scrollTop = logContainer.scrollHeight;
-    }
-  }
-  
-  /**
-   * Helper: Truncate string
-   */
-  function truncate(str, length) {
-    if (!str) return 'N/A';
-    if (str.length <= length) return str;
-    return str.substring(0, length) + '...';
-  }
-  
-  /**
-   * Helper: Format time
-   */
-  function formatTime(seconds) {
-    if (seconds === null || seconds === undefined) return 'N/A';
-    
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  }
-  
-  /**
-   * Helper: Get backend status icon
-   */
-  function getBackendIcon(status) {
-    if (status === 'success') return '✓';
-    if (status === 'error') return '✗';
-    return '?';
-  }
-  
-  /**
-   * Initialize popup
-   */
-  async function init() {
-    try {
-      initDom();
-      setupListeners();
-      await loadSettings();
-      await loadLogs();
-      
-      console.log('[POPUP] Initialized successfully');
-      
-      // Request latest data from background
-      try {
-        const response = await chrome.runtime.sendMessage({ 
-          action: 'GET_LATEST_DATA' 
-        });
-        
-        if (response.success && response.data) {
-          console.log('[POPUP] Got latest data from background');
-          // Data is already in storage, just loaded
-        }
-      } catch (error) {
-        console.log('[POPUP] No latest data available (this is normal on first load)');
-      }
-      
-    } catch (error) {
-      console.error('[POPUP] Initialization error:', error);
-      showMessage('Initialization error: ' + error.message, 'error');
-    }
-  }
-  
-  // Start initialization when DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
-  
-})();
+  });
+}, 500);
+
+console.log("[POPUP] Popup ready");
+console.log("[POPUP] 💾 Polling storage for logs every 500ms");
